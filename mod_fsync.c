@@ -1,7 +1,6 @@
 /*
  * ProFTPD: mod_fsync -- a module for using fsync to periodically force writes
- *
- * Copyright (c) 2004-2005 TJ Saunders
+ * Copyright (c) 2004-2017 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,16 +21,14 @@
  * resulting executable, without including the source code for OpenSSL in the
  * source distribution.
  *
- * This is mod_fsync, contrib software for proftpd 1.2 and above.
+ * This is mod_fsync, contrib software for proftpd 1.3.x and above.
  * For more information contact TJ Saunders <tj@castaglia.org>.
- *
- * $Id: mod_fsync.c,v 1.3 2005/11/19 22:34:41 tj Exp tj $
  */
 
 #include "conf.h"
 #include "privs.h"
 
-#define MOD_FSYNC_VERSION		"mod_fsync/0.2"
+#define MOD_FSYNC_VERSION		"mod_fsync/0.3"
 
 /* Make sure the version of proftpd is as necessary. */
 #if PROFTPD_VERSION_NUMBER < 0x0001030001
@@ -55,7 +52,7 @@ static int fsync_close(pr_fh_t *fh, int fd) {
    * by the kernel.
    */
 
-  if (fsync_fds &&
+  if (fsync_fds != NULL &&
       fsync_fds->nelts > 0) {
     register unsigned int i;
     int *fds = fsync_fds->elts;
@@ -133,25 +130,26 @@ static int fsync_write(pr_fh_t *fh, int fd, const char *buf, size_t size) {
 
   fsync_nwritten += res;
 
-  if (fsync_fds &&
+  if (fsync_fds != NULL &&
       fsync_nwritten >= fsync_threshold) {
     register unsigned int i;
     int *fds = fsync_fds->elts;
 
     (void) pr_log_writefile(fsync_logfd, MOD_FSYNC_VERSION,
       "FsyncThreshold (%" PR_LU ") reached, syncing %d descriptors",
-      fsync_threshold, fsync_fds->nelts);
+      (pr_off_t) fsync_threshold, fsync_fds->nelts);
 
     for (i = 0; i < fsync_fds->nelts; i++) {
       if (fds[i] != -1) {
 
 #ifdef HAVE_FDATASYNC
-        if (fdatasync(fds[i]) < 0)
+        if (fdatasync(fds[i]) < 0) {
 #else
-        if (fsync(fds[i]) < 0)
+        if (fsync(fds[i]) < 0) {
 #endif /* HAVE_FDATASYNC */
           (void) pr_log_writefile(fsync_logfd, MOD_FSYNC_VERSION,
             "error sync'ing data for %d: %s", fds[i], strerror(errno));
+        }
       }
     }
 
@@ -167,21 +165,22 @@ static int fsync_write(pr_fh_t *fh, int fd, const char *buf, size_t size) {
 
 /* usage: FsyncEngine on|off */
 MODRET set_fsyncengine(cmd_rec *cmd) {
-  int bool = -1;
+  int engine = -1;
   config_rec *c;
 
   CHECK_ARGS(cmd, 1);
   CHECK_CONF(cmd, CONF_ROOT);
 
-  bool = get_boolean(cmd, 1);
-  if (bool == -1)
+  engine = get_boolean(cmd, 1);
+  if (engine == -1) {
     CONF_ERROR(cmd, "expected Boolean parameter");
+  }
 
   c = add_config_param(cmd->argv[0], 1, NULL);
-  c->argv[0] = pcalloc(c->pool, sizeof(int));
-  *((int *) c->argv[0]) = bool;
+  c->argv[0] = palloc(c->pool, sizeof(int));
+  *((int *) c->argv[0]) = engine;
 
-  return HANDLED(cmd);
+  return PR_HANDLED(cmd);
 }
 
 /* usage: FsyncLog path */
@@ -189,11 +188,12 @@ MODRET set_fsynclog(cmd_rec *cmd) {
   CHECK_ARGS(cmd, 1);
   CHECK_CONF(cmd, CONF_ROOT);
 
-  if (pr_fs_valid_path(cmd->argv[1]) < 0)
+  if (pr_fs_valid_path(cmd->argv[1]) < 0) {
     CONF_ERROR(cmd, "must be an absolute path");
+  }
 
   add_config_param_str(cmd->argv[0], 1, cmd->argv[1]);
-  return HANDLED(cmd);
+  return PR_HANDLED(cmd);
 }
 
 /* usage: FsyncThreshold size */
@@ -218,10 +218,10 @@ MODRET set_fsyncthreshold(cmd_rec *cmd) {
   }
 
   c = add_config_param(cmd->argv[0], 1, NULL);
-  c->argv[0] = pcalloc(c->pool, sizeof(off_t));
+  c->argv[0] = palloc(c->pool, sizeof(off_t));
   *((off_t *) c->argv[0]) = threshold;
 
-  return HANDLED(cmd);
+  return PR_HANDLED(cmd);
 }
 
 /* Event handlers
@@ -266,12 +266,12 @@ static void fsync_postparse_ev(const void *event_data, void *user_data) {
           ": unable to open FsyncLog '%s': %s", path, strerror(errno));
         break;
 
-      case LOG_SYMLINK:
+      case PR_LOG_SYMLINK:
         pr_log_debug(DEBUG1, MOD_FSYNC_VERSION
           ": unable to open FsyncLog '%s': %s", path, "is a symlink");
         break;
 
-      case LOG_WRITEABLE_DIR:
+      case PR_LOG_WRITABLE_DIR:
         pr_log_debug(DEBUG0, MOD_FSYNC_VERSION
           ": unable to open FsyncLog '%s': %s", path,
           "parent directory is world-writable");
@@ -280,8 +280,7 @@ static void fsync_postparse_ev(const void *event_data, void *user_data) {
   }
 
   c = find_config(main_server->conf, CONF_PARAM, "FsyncThreshold", FALSE);
-  if (!c) {
-
+  if (c == NULL) {
     /* This is a required directive. */
     (void) pr_log_writefile(fsync_logfd, MOD_FSYNC_VERSION,
       "missing required FsyncThreshold directive, disabling module");
@@ -292,7 +291,7 @@ static void fsync_postparse_ev(const void *event_data, void *user_data) {
 
   /* Register our custom filesystem. */
   fs = pr_register_fs(permanent_pool, "fsync", "/");
-  if (!fs) {
+  if (fs == NULL) {
     (void) pr_log_writefile(fsync_logfd, MOD_FSYNC_VERSION,
       "error registering FS: %s", strerror(errno));
     return;
