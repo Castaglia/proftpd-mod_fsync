@@ -1,0 +1,151 @@
+<!-- $Id: mod_fsync.html,v 1.1 2004/11/04 20:19:35 tj Exp tj $ -->
+<!-- $Source: /home/tj/proftpd/modules/doc/RCS/mod_fsync.html,v $ -->
+
+<html>
+<head>
+<title>ProFTPD module mod_fsync</title>
+</head>
+
+<body bgcolor=white>
+
+<hr>
+<center>
+<h2><b>ProFTPD module <code>mod_fsync</code></b></h2>
+</center>
+<hr><br>
+
+<p>
+On some kernels and/or filesystems, if there are files opened simultaneously
+for reading and writing, the buffer cache algorithms may cause the
+write I/O to swamp the read I/O, causing processes that are reading files
+to slow down because of buffer cache misses.  The Linux 2.4 kernel, for
+example, suffers from this problem.
+
+<p>
+The <code>mod_fsync</code> module attempts to prevent such bottlenecks
+by forcibly flushing to disk the buffers used for files open for writing
+after a certain number of bytes have been written (for example, after
+128 KB has been written to a file).  This prevents the buffer cache from
+being dominated by data from files being written, freeing up space for
+data for files being read.
+
+<p>
+This module is contained in the <code>mod_fsync.c</code> file for ProFTPD
+1.2.10rc1 and later, and is not compiled by default.  Installation instructions
+are discussed <a href="#Installation">here</a>.
+
+<p>
+The most current version of <code>mod_fsync</code> can be found at:
+<pre>
+  <a href="http://www.castaglia.org/proftpd/">http://www.castaglia.org/proftpd/</a>
+</pre>
+
+<h2>Author</h2>
+<p>
+Please contact TJ Saunders &lt;tj <i>at</i> castaglia.org&gt; with any
+questions, concerns, or suggestions regarding this module.
+
+<h2>Directives</h2>
+<ul>
+  <li><a href="#FsyncEngine">FsyncEngine</a>
+  <li><a href="#FsyncLog">FsyncLog</a>
+  <li><a href="#FsyncThreshold">FsyncThreshold</a>
+</ul>
+
+<hr>
+<h2><a name="FsyncEngine">FsyncEngine</a></h2>
+<strong>Syntax:</strong> FsyncEngine <em>on|off</em><br>
+<strong>Default:</strong> FsyncEngine off<br>
+<strong>Context:</strong> server config<br>
+<strong>Module:</strong> mod_fsync<br>
+<strong>Compatibility:</strong> 1.2.10rc1 and later
+
+<p>
+The <code>FsyncEngine</code> directive enables or disables the module's
+runtime sync engine.  If it is set to <em>off</em> this module does no
+flushing of data outside of the normal I/O usage.  Use this directive to
+disable the module.
+
+<p>
+<hr>
+<h2><a name="FsyncLog">FsyncLog</a></h2>
+<strong>Syntax:</strong> FsyncLog <em>path</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> server config<br>
+<strong>Module:</strong> mod_fsync<br>
+<strong>Compatibility:</strong> 1.2.10c1 and later
+
+<p>
+The <code>FsyncLog</code> directive is used to a specify a log file for
+<code>mod_fsync</code> reporting and debugging. The <em>path</em> parameter
+must be the full path to the file to use for logging.  Note that this path
+must <b>not</b> be to a world-writeable directory and, unless
+<code>AllowLogSymlinks</code> is explicitly set to <em>on</em>
+(generally a bad idea), the path must <b>not</b> be a symbolic link.
+
+<p>
+<h2><a name="FsyncThreshold">FsyncThreshold</a></h2>
+<strong>Syntax:</strong> FsyncThreshold <em>size</em><br>
+<strong>Default:</strong> None<br>
+<strong>Context:</strong> server config<br>
+<strong>Module:</strong> mod_fsync<br>
+<strong>Compatibility:</strong> 1.2.10rc1 and later
+
+<p>
+The <code>FsyncThreshold</code> directive configures a threshold value,
+in bytes.  When this number of bytes has been written,
+<code>mod_fsync</code> will walk the list of files currently open for
+writing, and will forcibly flush the data for those files to disk.
+
+<p>
+<b>Note</b>: This directive is required for <code>mod_fsync</code> to
+operate.
+
+<p>
+<hr>
+<h2><a name="Installation">Installation</a></h2>
+To install <code>mod_fsync</code>, copy the <code>mod_fsync.c</code> file
+into:
+<pre>
+  <i>proftpd-dir</i>/contrib/
+</pre>
+after unpacking the latest proftpd-1.2.<i>x</i> source code.  Then follow the
+usual steps for using third-party modules in proftpd:
+<pre>
+  ./configure --with-modules=mod_fsync
+  make
+  make install
+</pre>
+
+<p>
+<hr>
+<h2><a name="Usage">Usage</a></h2>
+
+<p>
+<b>Example Configuration</b><br>
+<pre>
+  &lt;IfModule mod_fsync.c&gt;
+    FsyncEngine on
+    FsyncLog /etc/ftpd/var/fsync.log
+    FsyncThreshold 131072 # 128KB
+  &lt;/IfModule&gt;
+</pre>
+
+<p>
+<hr><br>
+
+Author: <i>$Author: tj $</i><br>
+Last Updated: <i>$Date: 2004/11/04 20:19:35 $</i><br>
+
+<br><hr>
+
+<font size=2><b><i>
+&copy; Copyright 2004 TJ Saunders<br>
+ All Rights Reserved<br>
+</i></b></font>
+
+<hr><br>
+
+</body>
+</html>
+
